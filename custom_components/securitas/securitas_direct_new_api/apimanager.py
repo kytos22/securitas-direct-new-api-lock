@@ -758,3 +758,78 @@ class ApiManager:
         response = await self._execute_request(content, "DisarmStatus", installation)
 
         return response["data"]["xSDisarmStatus"]
+
+async def _get_lock_status(self, installation: Installation) -> dict[str, Any]:
+    """Retrieve the lock status of the smart lock."""
+    content = {
+        "operationName": "xSGetLockCurrentMode",
+        "variables": {
+            "numinst": installation.number,
+        },
+        "query": "query xSGetLockCurrentMode($numinst: String!) {\n  xSGetLockCurrentMode(numinst: $numinst) {\n    res\n    smartlockInfo {\n      lockStatus\n      deviceId\n    }\n  }\n}",
+    }
+
+    _LOGGER.debug("Requesting lock status for installation: %s", installation.number)
+    response = await self._execute_request(content, "xSGetLockCurrentMode", installation)
+
+    if "smartlockInfo" in response["data"]["xSGetLockCurrentMode"]:
+        return response["data"]["xSGetLockCurrentMode"]["smartlockInfo"]
+    else:
+        _LOGGER.error("No lock status returned for installation: %s", installation.number)
+        return {}
+
+async def _change_lock_mode(self, installation: Installation, lock: bool) -> dict[str, Any]:
+    """Change the mode of the smart lock (lock or unlock)."""
+    content = {
+        "operationName": "xSChangeSmartlockMode",
+        "variables": {
+            "numinst": installation.number,
+            "panel": "SDVECU",  # Panel type
+            "deviceId": "02",  # ID of the device
+            "deviceType": "DR",  # Type of the device
+            "lock": lock,  # Lock or unlock
+        },
+        "query": """
+            mutation xSChangeSmartlockMode(
+                $numinst: String!, 
+                $panel: String!, 
+                $deviceId: String!, 
+                $deviceType: String!, 
+                $lock: Boolean!
+            ) {
+                xSChangeSmartlockMode(
+                    numinst: $numinst,
+                    panel: $panel,
+                    deviceId: $deviceId,
+                    deviceType: $deviceType,
+                    lock: $lock
+                ) {
+                    res
+                    msg
+                    referenceId
+                }
+            }
+        """,
+    }
+
+    action = "lock" if lock else "unlock"
+    _LOGGER.debug(
+        "Requesting to %s the smart lock for installation: %s, panel: %s, deviceId: %s, deviceType: %s",
+        action,
+        installation.number,
+        "SDVECU",
+        "02",
+        "DR",
+    )
+    response = await self._execute_request(content, "xSChangeSmartlockMode", installation)
+
+    if "xSChangeSmartlockMode" in response["data"]:
+        return response["data"]["xSChangeSmartlockMode"]
+    else:
+        _LOGGER.error(
+            "No response returned for lock action '%s' on installation: %s",
+            action,
+            installation.number,
+        )
+        return {}
+
